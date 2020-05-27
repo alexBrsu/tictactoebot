@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <title>Крестики/нолики</title>
+  </head>
+  <body class="body-style">
+    <link href='http://fonts.googleapis.com/css?family=Open+Sans' rel='stylesheet' type='text/css'>
+    <div class="menu">
+        <h1 class="center red-text">
+        
+            ОБЫГРАЙ МЕНЯ, <br/>          ЕСЛИ СМОЖЕШЬ !               
+        </h1>
+        
+        <div class="menu-grid">
+            <div class="center">
+            <p><input name="moveOrder" type="radio" value="first" checked> Ходить первым</p>
+            <p><input name="moveOrder" type="radio" value="second"> Ходить вторым</p>
+            <button onclick="startGame()" class="center">Начать Игру</button>
+            </div>
+
+            <div>
+                <h4 class="center">
+                                СЧЁТ ИГРЫ<br/>     (при обновлении страницы        статистика обнуляется)
+                </h4>
+                <table width="50%" >
+                    <tr>
+                     <th>  ПОБЕД  </th>
+                     <th> НИЧЬИХ </th>
+                     <th> ПОРАЖЕНИЙ </th>
+                    </tr>
+                    <tr class="center-row">
+                     <td><span><span cla id='wins'>0</span></span></td>
+                     <td><span><span id='draws'>0</span></span></td>
+                     <td><span><span id='loses'>0</span></span></td>
+                   </tr>
+                   </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="gameField" class="game-field field-wrapper">
+        <div class="square-wrapper" onclick="manMove('0i0')"><div id="0i0" class="inner-sign"></div></div>
+        <div class="square-wrapper" onclick="manMove('0i1')"><div id="0i1" class="inner-sign"/></div></div>
+        <div class="square-wrapper" onclick="manMove('0i2')"><div id="0i2" class="inner-sign"/></div></div>
+        <div class="square-wrapper" onclick="manMove('1i0')"><div id="1i0" class="inner-sign"/></div></div>
+        <div class="square-wrapper" onclick="manMove('1i1')"><div id="1i1" class="inner-sign"/></div></div>
+        <div class="square-wrapper" onclick="manMove('1i2')"><div id="1i2" class="inner-sign"/></div></div>
+        <div class="square-wrapper" onclick="manMove('2i0')"><div id="2i0" class="inner-sign"/></div></div>
+        <div class="square-wrapper" onclick="manMove('2i1')"><div id="2i1" class="inner-sign"/></div></div>
+        <div class="square-wrapper" onclick="manMove('2i2')"><div id="2i2" class="inner-sign"/></div></div>
+    </div>
+
+ </body>
+</html>
+
+<script>
+    var gameIsActive = false;
+    var moveOrder;
+    var MAN = 'man';
+    var BOT = 'BOT';
+    var manImageLink;
+    var botImageLink;
+    var manSign;
+    var botSign;
+    var crossLink = 'https://c7.hotpng.com/preview/313/595/595/x-mark-check-mark-cross-sign-clip-art-x-mark.jpg';
+    var zeroLink = 'https://www.clipartmax.com/png/middle/440-4408148_transparent-o-tic-tac-toe-o.png';
+    var crossSign = '1';
+    var zeroSign = '0';
+    var emptySign = '';
+    var coorSplitValue = 'i';  // dont forget match this value in markup
+    var botThinkingSpeed = 600;
+    var whoFirstMove;
+    var moveCounter;
+    var defCornerTactic = 'cornerDefend';
+    var defCenterTactic = 'centerDefend';
+    var defSideTactic = 'sideDefend';
+    var attackCornerTactic = 'cornerAttack';
+    var attackCenterTactic = 'centerAttac';
+    var botAttackOrDefend;
+    var attackTactic = 'attack';
+    var defendTactic = 'defend';
+    var botTactic;
+    var transponseDeep;
+    var botFirstMoves = [[0,0], [0,2], [1,1], [2,0], [2,2]];
+    var cornerTacticFirstMoves = [[0,0], [0,2], [2,0], [2,2]];
+    var centerTacticFirstMove = [1,1];
+
+    var firstManMove;
+    var firstBotMove;
+
+    var gameState = [
+        [emptySign, emptySign, emptySign],
+        [emptySign, emptySign, emptySign],
+        [emptySign, emptySign, emptySign]
+    ];
+
+    function startGame() {
+        if (!gameIsActive) {
+            var radios = document.getElementsByName('moveOrder');
+            moveOrder = radios[0].checked ? MAN : BOT;
+            whoFirstMove = moveOrder;
+            moveCounter = 0;
+            transponseDeep = undefined;
+            firstManMove = undefined;
+            firstBotMove = undefined;
+
+            if (whoFirstMove === MAN) {
+                manImageLink = crossLink;
+                manSign = crossSign;
+                botImageLink = zeroLink;
+                botSign = zeroSign;
+            } else {
+                manImageLink = zeroLink;
+                manSign = zeroSign;
+                botImageLink = crossLink;
+                botSign = crossSign;
+            }
+
+            for (let i = 0; i < gameState.length; i++) {
+                for (let j = 0; j < gameState[i].length; j++) {
+                    gameState[i][j] = emptySign;
+                }
+            }
+
+            let imageArray = document.getElementsByClassName('inner-sign');
+            for (let i = 0; i < imageArray.length; i++) {
+                imageArray[i].style.backgroundImage ='';
+            }
+
+            gameIsActive = true;
+            playGame();
+        } else {
+            let isManSure = confirm('Если начать заново, Вам будет засчитано поражение. Вы уверены ?');
+            if (isManSure) {
+                changeStaticstics(botSign);
+                gameIsActive = false;
+                startGame();
+            }
+        }
+    }
+
+    function playGame() {
+        if (whoFirstMove === BOT) {
+            botMove();
+        } else {
+            alert('ДЕЛАЙ ХОД!');
+        }
+    }
+
+    function manMove(id) {
+        if (moveOrder === MAN && gameIsActive == true) {
+            let coords = id.split(coorSplitValue);
+            if (gameState[coords[0]][coords[1]] != emptySign) return;
+            gameState[coords[0]][coords[1]] = manSign;
+            document.getElementById(id).style.backgroundImage = "url('" + manImageLink + "')";
+            let isGameFinished = checkGameState();
+
+            if (isGameFinished) {
+                gameIsActive = false;
+                return;
+            }
+            if (moveCounter <= 1) {
+                firstManMove = [coords[0], coords[1]];
+            }
+            moveCounter++;
+            moveOrder = BOT;
+            if (!transponseDeep) {
+                setGlobalTransponseDeep();
+            }
+            setTimeout(botMove, botThinkingSpeed);
+        } 
+    }
+
+    function botMove() {
+        if (moveCounter <= 1) {
+            chooseGameTactic();
+        }
+
+        // case when bot moves first and first move was in corner. Now he is doing second move
+        if (moveCounter == 2 && botTactic == attackCornerTactic) {
+            let move = getCornerAttackSecondMove(gameState, transponseDeep);
+            doBotMove(move[0], move[1]);
+        
+        // case when bot moves first and first move was in center. Now he is doing second move
+        } else if (moveCounter == 2 && botTactic == attackCenterTactic) {
+            let move = getCenterAttackSecondMove(gameState, transponseDeep);
+            doBotMove(move[0], move[1]);
+        } else {
+            let botFirstMove = isFirstMoveFor(BOT, gameState);
+            if (botFirstMove) {
+                let firstMove;
+                if (botTactic === attackCornerTactic) {
+                    let moveIndex = randomInteger(0, cornerTacticFirstMoves.length - 1);
+                    firstMove = cornerTacticFirstMoves[moveIndex];
+                } else if (botTactic === attackCenterTactic) {
+                    firstMove = centerTacticFirstMove;
+                }
+                doBotMove(firstMove[0], firstMove[1]);
+            }
+
+            let botCanWin = isWinPositionFor(botSign, gameState);
+            if (!botFirstMove && botCanWin) {
+                let coordinates = botCanWin.split(coorSplitValue);
+                doBotMove(coordinates[0], coordinates[1]);
+            }
+
+            let manCanWin = isWinPositionFor(manSign, gameState);
+            if (!botFirstMove && manCanWin && !botCanWin) {
+                let coordinates = manCanWin.split(coorSplitValue);
+                console.log('I prevent your win ', coordinates[0], coordinates[1]);
+                doBotMove(coordinates[0], coordinates[1]);
+            }
+
+            let botCanDoForkMove = isThereForkPositionFor(botSign, gameState);
+            if (!botFirstMove && !botCanWin && !manCanWin && botCanDoForkMove) {
+                let randIndex = randomInteger(0, botCanDoForkMove.length-1);
+                console.log('I do fork move', botCanDoForkMove[randIndex][0], botCanDoForkMove[randIndex][1]);
+                doBotMove(botCanDoForkMove[randIndex][0], botCanDoForkMove[randIndex][1]);
+            }
+
+            let manCanDoForkMove = isThereForkPositionFor(manSign, gameState);
+            if (!botFirstMove && !botCanWin && !manCanWin && !botCanDoForkMove && manCanDoForkMove) {
+                let moveIndex = randomInteger(0, manCanDoForkMove.length-1);
+                doBotMove(manCanDoForkMove[moveIndex][0], manCanDoForkMove[moveIndex][1]);
+            }
+
+            let doRandomMove = !botFirstMove && !botCanWin && !manCanWin && !botCanDoForkMove && !manCanDoForkMove;
+            if (doRandomMove) {
+                let row = generateRowIndex();
+                let column = generateColumnIndex(row);
+                console.log('I do random!', row, column);
+                doBotMove(row, column);
+            }
+        }
+        
+
+        let isGameFinished = checkGameState();
+
+        if (isGameFinished) {
+            gameIsActive = false;
+            return;
+        }
+
+        moveOrder = MAN;
+    }
+
+    function doBotMove(i, j) {
+        let id = i + coorSplitValue + j;
+        document.getElementById(id).style.backgroundImage = "url('" + botImageLink + "')";
+        gameState[i][j] = botSign;
+        if (moveCounter <= 1) {
+            firstBotMove = [i, j];
+        }
+        if (!transponseDeep) {
+            setGlobalTransponseDeep();
+        }
+        moveCounter++;
+    }
+
+    function isFirstMoveFor(whoMove, gState) {
+        let isFirstMoveForWho = true;
+        for (let i = 0; i < gState.length; i++) {
+            for (let j = 0; j < gState[i].length; j++) {
+                if (gState[i][j] != emptySign) {
+                    return false;
+                }
+            }
+        }
+        let whoFirst = whoMove === whoFirstMove ? true : false;
+        return whoFirst && isFirstMoveForWho ? true : false;
+    }
+
+    function isGameStateEmpty(gState) {
+        for (let i = 0; i < gState.length; i++) {
+            for (let j = 0; j < gState[i].length; j++) {
+                if (gState[i][j] != emptySign) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    function getManFirstMove(gState) {
+        for (let i = 0; i < gState.length; i++) {
+            if (gState[i].indexOf(manSign) > -1) {
+                return [i, gState[i].indexOf(manSign)];
+            }
+        }
+    }
+
+    function chooseGameTactic() {
+        if (whoFirstMove === BOT) {
+            botAttackOrDefend = attackTactic;
+            let randTactic = randomInteger(0,1);
+            botTactic = randTactic == 1 ? attackCenterTactic : attackCornerTactic;
+        } else {
+            botAttackOrDefend = defendTactic;
+            let gStateCopy = duplicateGameState(gameState);
+            let trDeep = getTransponseDeep(getManFirstMove(gStateCopy));
+            gStateCopy = getTransponseMatrix(trDeep, gStateCopy);
+
+            if (gStateCopy[0][0] === manSign) {
+                botTactic = defCornerTactic;
+            } else if (gStateCopy[1][0] === manSign) {
+                botTactic = defSideTactic;
+            } else if (gStateCopy[1][1] === manSign) {
+                botTactic = defCenterTactic;
+            } 
+        }
+    }
+
+    function isWinPositionFor(whoSign, gState) {
+        // horizont directoin
+        for (let i = 0; i < gState.length; i++) {
+            if (gState[i].indexOf(whoSign) != gState[i].lastIndexOf(whoSign) && gState[i].indexOf(emptySign) > -1) {
+                return i + coorSplitValue + gState[i].indexOf(emptySign);
+            }
+        }
+
+        // vertical direction
+        for (let i = 0; i < gState.length; i++) {
+            let columnArray = [gState[0][i], gState[1][i], gState[2][i]];
+            if (columnArray.indexOf(whoSign) != columnArray.lastIndexOf(whoSign) && columnArray.indexOf(emptySign) > -1) {
+                return columnArray.indexOf(emptySign) + coorSplitValue + i;
+            }
+        }
+
+        // diagonal direction
+        let diagonalArray = [gState[0][0], gState[1][1], gState[2][2]];
+        if (diagonalArray.indexOf(whoSign) != diagonalArray.lastIndexOf(whoSign) && diagonalArray.indexOf(emptySign) > -1) {
+            return diagonalArray.indexOf(emptySign) + coorSplitValue + diagonalArray.indexOf(emptySign);
+        }
+        diagonalArray = [gState[0][2], gState[1][1], gState[2][0]];
+        if (diagonalArray.indexOf(whoSign) != diagonalArray.lastIndexOf(whoSign) && diagonalArray.indexOf(emptySign) > -1) {
+            return  diagonalArray.indexOf(emptySign) == 2 ? '2' + coorSplitValue + '0' : 
+                    diagonalArray.indexOf(emptySign) == 1 ? '1' + coorSplitValue + '1' : '0' + coorSplitValue + '2';
+        }
+
+        return false;
+    }
+
+    function isThereForkPositionFor(whoSign, gState) {
+        let potentialWinPositions = getPotentialWinPositionsFor(whoSign, gState);
+        let strCoords = convertCoordMatrixToStringMatrix(potentialWinPositions);
+
+        let forkPositions = [];
+
+        strCoords.forEach(position => {
+            if (strCoords.indexOf(position) != strCoords.lastIndexOf(position) && forkPositions.indexOf(position) == -1) {
+                forkPositions.push(position);
+            }
+        });
+
+        forkPositions = convertStringMatrixToCoordMatrix(forkPositions);
+
+        return forkPositions.length > 0 ? forkPositions : false;
+    }
+
+    function convertCoordMatrixToStringMatrix(matrix) {
+        let strMatrix = [];
+        matrix.forEach(el => {
+            strMatrix.push(el[0] + coorSplitValue + el[1]);
+        });
+        return strMatrix;
+    }
+
+    function convertStringMatrixToCoordMatrix(strMatrix) {
+        let coordMatrix = [];
+        strMatrix.forEach(el => {
+            coordMatrix.push(el.split(coorSplitValue));
+        });
+        return coordMatrix;
+    }
+
+    function getPotentialWinPositionsFor(whoSign, gState) {
+        let enemySign = whoSign === botSign ? manSign : botSign;
+        let potentialWinPositions = [];
+
+        // horizont directoin
+        for (let i = 0; i < gState.length; i++) {
+            if (gState[i].indexOf(whoSign) > -1 && gState[i].indexOf(whoSign) == gState[i].lastIndexOf(whoSign) && gState[i].indexOf(enemySign) == -1) {
+                potentialWinPositions.push([i, gState[i].indexOf(emptySign)]);
+                potentialWinPositions.push([i, gState[i].lastIndexOf(emptySign)]);
+            }
+        }
+
+        // vertical direction
+        for (let i = 0; i < gState.length; i++) {
+            let columnArray = [gState[0][i], gState[1][i], gState[2][i]];
+            if (columnArray.indexOf(whoSign) > -1 && columnArray.indexOf(whoSign) == columnArray.lastIndexOf(whoSign) && columnArray.indexOf(enemySign) == -1) {
+                potentialWinPositions.push([columnArray.indexOf(emptySign), i]);
+                potentialWinPositions.push([columnArray.lastIndexOf(emptySign), i]);
+            }
+        }
+
+        // diagonal direction
+        let diagonalArray = [gState[0][0], gState[1][1], gState[2][2]];
+        if (diagonalArray.indexOf(whoSign) > -1 && diagonalArray.indexOf(whoSign) == diagonalArray.lastIndexOf(whoSign) && diagonalArray.indexOf(enemySign) == -1) {
+            potentialWinPositions.push([diagonalArray.indexOf(emptySign), diagonalArray.indexOf(emptySign)]);
+            potentialWinPositions.push([diagonalArray.lastIndexOf(emptySign), diagonalArray.lastIndexOf(emptySign)]);
+        }
+        diagonalArray = [gState[0][2], gState[1][1], gState[2][0]];
+        if (diagonalArray.indexOf(whoSign) > -1 && diagonalArray.indexOf(whoSign) == diagonalArray.lastIndexOf(whoSign) && diagonalArray.indexOf(enemySign) == -1) {
+            if (diagonalArray.indexOf(emptySign) == 1) {
+                potentialWinPositions.push([1,1]);
+                potentialWinPositions.push([2,0]);
+            } else {
+                potentialWinPositions.push([0,2]);
+                if (diagonalArray.lastIndexOf(emptySign) == 1) {
+                    potentialWinPositions.push([1,1]);
+                } else {
+                    potentialWinPositions.push([2,0]);
+                }
+            }
+        }
+
+        return potentialWinPositions;
+    }
+
+    function randomInteger(min, max) {
+        let rand = min + Math.random() * (max + 1 - min);
+        return Math.floor(rand);
+    }
+
+    function generateRowIndex() {
+        let row = randomInteger(0,2);
+        if (gameState[row].includes(emptySign)) {
+            return row;
+        } else {
+            return generateRowIndex();
+        }
+    }
+
+    function generateColumnIndex(row) {
+        let column = randomInteger(0,2);
+        if (gameState[row][column] === emptySign) {
+            return column;
+        } else {
+            return generateColumnIndex(row);
+        }
+    }
+
+    function checkGameState() {
+        for (let i = 0; i < gameState.length; i++) {
+            if (gameState[i][0] === gameState[i][1] && gameState[i][0] === gameState[i][2] && gameState[i][0] != emptySign) {
+                changeStaticstics(gameState[i][0]);
+                showResult(gameState[i][0]);
+                return true;
+            }
+        }
+
+        for (let i = 0; i < gameState.length; i++) {
+            if (gameState[0][i] === gameState[1][i] && gameState[0][i] === gameState[2][i] && gameState[0][i] != emptySign) {
+                changeStaticstics(gameState[0][i]);
+                showResult(gameState[0][i]);
+                return true;
+            }
+        }
+
+        if ((gameState[0][0] === gameState[1][1] && gameState[0][0] === gameState[2][2] || gameState[0][2] === gameState[1][1] && gameState[1][1] === gameState[2][0]) && gameState[1][1] != emptySign) {
+            changeStaticstics(gameState[1][1]);
+            showResult(gameState[1][1]);
+            return true;
+        }
+
+        let isDraw = true;
+        for (let i = 0; i < gameState.length; i++) {
+            for (let j = 0; j < gameState[i].length; j++) {
+                if (gameState[i][j] === emptySign) {
+                    isDraw = false;
+                }
+            }
+        }
+
+        if (isDraw) {
+            changeStaticstics('');
+            showResult('');
+            return true;
+        }
+
+        return false;
+    }
+    
+    function showResult(winSign) {
+        winner = winSign === botSign ? BOT : winSign === manSign ? MAN : 'draw';
+        if (winner === MAN) {
+            alert('ТЫ ПОБЕДИЛ !');
+        } else if (winner === BOT) {
+            alert('ТЫ ПРОИГРАЛ! !');
+        } else {
+            alert('НИЧЬЯ !');
+        }
+    }
+
+    function changeStaticstics(winSign) {
+        winner = winSign === botSign ? BOT : winSign === manSign ? MAN : 'draw';
+        if (winner === MAN) {
+            document.getElementById('wins').innerHTML = parseInt(document.getElementById('wins').innerHTML) + 1;
+        } else if (winner === BOT) {
+            document.getElementById('loses').innerHTML = parseInt(document.getElementById('loses').innerHTML) + 1;
+        } else {
+            document.getElementById('draws').innerHTML = parseInt(document.getElementById('draws').innerHTML) + 1;
+        }
+    }
+
+    function duplicateGameState(gState) {
+        return [    [gState[0][0], gState[0][1], gState[0][2]],
+                    [gState[1][0], gState[1][1], gState[1][2]],
+                    [gState[2][0], gState[2][1], gState[2][2]]    ];
+    }
+
+    function getTransponseDeep(firstSign) {
+        let trDeep;
+        if ((firstSign[0] == 0 && firstSign[1] == 0) || ((firstSign[0] == 1 && firstSign[1] == 1))) {
+            trDeep = 0;
+        } else if (firstSign[0] == 0 && firstSign[1] != 0) {
+            trDeep = 1;
+        } else if (firstSign[1] == 2 && firstSign[0] != 0) {
+            trDeep = 2;
+        } else if (firstSign[0] == 2 && firstSign[1] != 2) {
+            trDeep = 3;
+        } else {
+            trDeep = 4;
+        }
+
+        return trDeep;
+    }
+
+    function getTransponseMatrix(transDeep, gState) {
+        let newGameState = [];
+        let timeValue = duplicateGameState(gState);
+        while (transDeep > 0) {
+            newGameState = [];
+            for (let i = 2; i > -1; i--) {
+                newGameState.push([timeValue[0][i], timeValue[1][i], timeValue[2][i]]);
+            }
+            timeValue = duplicateGameState(newGameState);
+            transDeep--;
+        }
+        if (newGameState.length == 0) {
+            return timeValue;
+        }
+        return newGameState;
+    }
+
+    function getInitMatrix(transDeep, gState) {
+        let newGameState = [];
+        let timeValue = duplicateGameState(gState);
+        while (transDeep > 0) {
+            newGameState = [];
+            for (let i = 0; i < 3; i++) {
+                newGameState.push([timeValue[2][i], timeValue[1][i], timeValue[0][i]]);
+            }
+            timeValue = duplicateGameState(newGameState);
+            transDeep--;
+        }
+        if (newGameState.length == 0) {
+            return timeValue;
+        }
+        return newGameState;
+    }
+
+    function setGlobalTransponseDeep() {
+        if (!firstManMove && firstBotMove) {
+            if (firstBotMove[0] == 1 && firstBotMove[1] == 1) {
+                return;
+            } else {
+                transponseDeep = getTransponseDeep(firstBotMove);
+                return;
+            }
+        } else if (!firstBotMove && firstManMove) {
+            if (firstManMove[0] == 1 && firstManMove[1] == 1) {
+                return;
+            } else {
+                transponseDeep = getTransponseDeep(firstManMove);
+                return;
+            }
+        } else if (firstManMove && firstBotMove) {
+            if (botAttackOrDefend === attackTactic) {
+                if (firstBotMove[0] == 1 && firstBotMove[1] == 1) {
+                    transponseDeep = getTransponseDeep(firstManMove);
+                    return;
+                } else {
+                    transponseDeep = getTransponseDeep(firstBotMove);
+                    return;
+                }
+            } else if (botAttackOrDefend === defendTactic) {
+                if (firstManMove[0] == 1 && firstManMove[1] == 1) {
+                    transponseDeep = getTransponseDeep(firstBotMove);
+                    return;
+                } else {
+                    transponseDeep = getTransponseDeep(firstManMove);
+                    return;
+                }
+            }
+        }
+    }
+
+    function getCornerAttackSecondMove(gState, trDeep) {
+        let transponseGState = getTransponseMatrix(trDeep, gState);
+        let manMove = getManFirstMove(transponseGState);
+        if ((manMove[0] == 0 && manMove[1] == 1) || (manMove[0] == 0 && manMove[1] == 2) || (manMove[0] == 1 && manMove[1] == 2) || (manMove[0] == 2 && manMove[1] == 2)) {
+            transponseGState[2][0] = botSign;
+        } else if ((manMove[0] == 1 && manMove[1] == 0) || (manMove[0] == 2 && manMove[1] == 0) || (manMove[0] == 2 && manMove[1] == 1)) {
+            transponseGState[0][2] = botSign;
+        } else if (manMove[0] == 1 && manMove[1] == 1) {
+            transponseGState[2][2] = botSign;
+        }
+        let transponseGStateInit = getInitMatrix(trDeep, transponseGState);
+        return getDifferentMove(gState, transponseGStateInit);
+    }
+
+    function getCenterAttackSecondMove(gState, trDeep) {
+        let transponseGState = getTransponseMatrix(trDeep, gState);
+        let manMove = getManFirstMove(transponseGState);
+        if (manMove[0] == 1 && manMove[1] == 0) {
+            let i = randomInteger(0, 1);
+            i = i == 1 ? 2 : 0;
+            let j = randomInteger(0, 2);
+            transponseGState[i][j] = botSign;
+        } else if (manMove[0] == 0 && manMove[1] == 0) {
+            transponseGState[2][2] = botSign;
+        }
+        let transponseGStateInit = getInitMatrix(trDeep, transponseGState);
+        return getDifferentMove(gState, transponseGStateInit);
+    }
+
+    function getDifferentMove(realState, fakeState) {
+        for (let i = 0; i < 3; i++) {
+            for (let j = 0; j < 3; j++) {
+                if (realState[i][j] != fakeState[i][j]) {
+                    return [i, j];
+                }
+            }
+        }
+        return null;
+    }
+
+</script>
+
+<style>
+    html, body {
+        height: 100%;
+        display: inline;
+    }
+
+    .menu {
+        background-color: rgb(66, 148, 216);
+        padding-bottom: 5px;
+    }
+
+    .center {
+        margin:1px 100px 10px 30px;
+        font-family:'Balsamiq Sans', cursive;
+        
+        
+    }
+    .center-row {
+        text-align: center;
+        font-family:'Balsamiq Sans', cursive;
+        text-align: center;
+    }
+
+    .game-field {
+        border: thin solid rgb(20, 19, 19);
+        margin-left: 30%;
+        margin-right: 30%;
+        height: 55%;
+        background-color: cornsilk;
+        margin-top: 3%;
+    }
+
+    .field-wrapper {
+        display: grid;
+        grid-template-columns: 33% 34% 33%;
+    }
+
+    .square-wrapper {
+        border: thin solid rgb(20, 19, 19);
+        width: 100%;
+        height: 100%;
+       
+    }
+
+    .inner-sign {
+        margin: 10%;
+        width: 80%;
+        height: 80%;
+        background-size: 100% 100%;
+        
+    }
+
+    .body-style {
+        background-image: url('https://www.onlinemarketplaces.com/ext/resources/-1GOMS/Jobs/Misc/salesforce.png?1576025262');
+    }
+
+    .menu-grid {
+        display: grid;
+        grid-template-columns: 70% 30%;
+        color: rgb(20, 19, 19);
+        margin:1px 1px 1px 50px;
+        
+        
+    }
+
+    .red-text {
+        color: rgb(20, 19, 19);
+        font-family:'Balsamiq Sans', cursive;;
+        margin: 0px 0px 0px 84px;
+     }
+    button{
+    background-color: rgb(255, 255, 255);
+    border: color rgb(20, 19, 19);
+    padding: 10px 24px;
+    text-align: center;
+    display: inline-block;
+    font-size: 18px;
+    margin:1px 100px 10px 30px;
+    font-family:'Balsamiq Sans', cursive;;
+     }
+     input[type=radio] {
+  padding: 0.5em;
+  background-color: rgb(255, 255, 255);
+  -webkit-appearance: none;
+  outline: 0.1em solid black;
+  outline-offset: 0.em;
+}
+input[type=radio]:checked {
+  display: inline-block;
+  background-color: #000;
+}
+table{
+    text-align: center;
+    font-family:'Balsamiq Sans', cursive;;
+    text-align: center;
+    margin:1px 1000px 0px 30px;
+}    
+
+</style>

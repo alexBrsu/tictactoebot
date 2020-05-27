@@ -35,6 +35,9 @@
                      <td><span><span id='loses'>0</span></span></td>
                    </tr>
                    </table>
+
+                   <br/>
+                   <button onclick="resetStatistics()">Сбросить статистику</button>
             </div>
         </div>
     </div>
@@ -83,8 +86,9 @@
     var botTactic;
     var transponseDeep;
     var botFirstMoves = [[0,0], [0,2], [1,1], [2,0], [2,2]];
-    var cornerTacticFirstMoves = [[0,0], [0,2], [2,0], [2,2]];
-    var centerTacticFirstMove = [1,1];
+    var cornerMoves = [[0,0], [0,2], [2,0], [2,2]];
+    var centerMove = [1,1];
+    var sideMoves = [[0,1], [1,0], [1,2], [2,1]];
 
     var cWhoFirstName = 'cWhoFirstName';
     var cWinsName = 'cWinsName';
@@ -103,20 +107,20 @@
     ];
 
     window.onload = function() {
-        console.log('PPC!');
-        console.log(getCookie(cWhoFirstName));
-        if (!getCookie(cWhoFirstName)) {
-            setCookie(cWhoFirstName, manFirstValue, 100);
-        } else {
-            let checkedOrder = getCookie(cWhoFirstName);
-            console.log(checkedOrder);
+        let manOrderMove = localStorage.getItem(cWhoFirstName);
+        if (manOrderMove) {
+            var radios = document.getElementsByName('moveOrder');
+            let checkedIndex = manOrderMove === manFirstValue ? 0 : 1;
+            radios[checkedIndex].checked = true;
         }
+        loadStatistics();
     }
 
     function startGame() {
         if (!gameIsActive) {
             var radios = document.getElementsByName('moveOrder');
             moveOrder = radios[0].checked ? MAN : BOT;
+            localStorage.setItem(cWhoFirstName, moveOrder === MAN ? manFirstValue : manSecondValue);
             whoFirstMove = moveOrder;
             moveCounter = 0;
             transponseDeep = undefined;
@@ -194,6 +198,7 @@
         if (moveCounter <= 1) {
             chooseGameTactic();
         }
+        let botDidntFirstMove = false;
 
         // case when bot moves first and first move was in corner. Now he is doing second move
         if (moveCounter == 2 && botTactic == attackCornerTactic) {
@@ -204,15 +209,47 @@
         } else if (moveCounter == 2 && botTactic == attackCenterTactic) {
             let move = getCenterAttackSecondMove(gameState, transponseDeep);
             doBotMove(move[0], move[1]);
+
+        // case when bot moves second and man's first move in Side or in Corner. Now bot is doing his first move
+        } else if (moveCounter == 1 && (botTactic == defSideTactic || botTactic == defCornerTactic)) {
+            let move = getSideAndCornerDefendFirstMove(gameState);
+            doBotMove(move[0], move[1]);
+
+        // case when bot moves second and man's first two moves were in corners. Now bot is doing his second move
+        } else if (moveCounter == 3 && botTactic == defCornerTactic && ( (gameState[0][0] == manSign && gameState[2][2] == manSign) || ((gameState[0][2] == manSign && gameState[2][0] == manSign)) )) {
+            let move = getCornerDefendSecondMove();
+            doBotMove(move[0], move[1]);
+        
+        // case when bot moves second and man's first move was in the center. Now bot is doing his first move
+        } else if (moveCounter == 1 && botTactic == defCenterTactic) {
+            let move = getCenterDefendFirstMove();
+            doBotMove(move[0], move[1]);
+
+        // case when bot moves second and man's first moves were in center and opposite corner. Now bot is doing second move
+        } else if (moveCounter == 3 && botTactic == defCenterTactic) {
+            let move = getCenterDefendSecondMove(gameState, transponseDeep);
+            if (move) {
+                let moveIndex = [1,1];
+                while (gameState[moveIndex[0]][moveIndex[1]] != emptySign) {
+                    moveIndex = cornerMoves[randomInteger(0, cornerMoves.length - 1)];
+                }
+                doBotMove(moveIndex[0], moveIndex[1]);
+            } else {
+                botDidntFirstMove = true;
+            }
+
         } else {
+            botDidntFirstMove = true;
+        }
+        if (botDidntFirstMove) {
             let botFirstMove = isFirstMoveFor(BOT, gameState);
             if (botFirstMove) {
                 let firstMove;
                 if (botTactic === attackCornerTactic) {
-                    let moveIndex = randomInteger(0, cornerTacticFirstMoves.length - 1);
-                    firstMove = cornerTacticFirstMoves[moveIndex];
+                    let moveIndex = randomInteger(0, cornerMoves.length - 1);
+                    firstMove = cornerMoves[moveIndex];
                 } else if (botTactic === attackCenterTactic) {
-                    firstMove = centerTacticFirstMove;
+                    firstMove = centerMove;
                 }
                 doBotMove(firstMove[0], firstMove[1]);
             }
@@ -226,14 +263,12 @@
             let manCanWin = isWinPositionFor(manSign, gameState);
             if (!botFirstMove && manCanWin && !botCanWin) {
                 let coordinates = manCanWin.split(coorSplitValue);
-                console.log('I prevent your win ', coordinates[0], coordinates[1]);
                 doBotMove(coordinates[0], coordinates[1]);
             }
 
             let botCanDoForkMove = isThereForkPositionFor(botSign, gameState);
             if (!botFirstMove && !botCanWin && !manCanWin && botCanDoForkMove) {
                 let randIndex = randomInteger(0, botCanDoForkMove.length-1);
-                console.log('I do fork move', botCanDoForkMove[randIndex][0], botCanDoForkMove[randIndex][1]);
                 doBotMove(botCanDoForkMove[randIndex][0], botCanDoForkMove[randIndex][1]);
             }
 
@@ -247,12 +282,10 @@
             if (doRandomMove) {
                 let row = generateRowIndex();
                 let column = generateColumnIndex(row);
-                console.log('I do random!', row, column);
                 doBotMove(row, column);
             }
         }
         
-
         let isGameFinished = checkGameState();
 
         if (isGameFinished) {
@@ -517,11 +550,46 @@
         winner = winSign === botSign ? BOT : winSign === manSign ? MAN : 'draw';
         if (winner === MAN) {
             document.getElementById('wins').innerHTML = parseInt(document.getElementById('wins').innerHTML) + 1;
+            localStorage.setItem(cWinsName, parseInt(localStorage.getItem(cWinsName)) + 1);
         } else if (winner === BOT) {
             document.getElementById('loses').innerHTML = parseInt(document.getElementById('loses').innerHTML) + 1;
+            localStorage.setItem(cLosesName, parseInt(localStorage.getItem(cLosesName)) + 1);
         } else {
             document.getElementById('draws').innerHTML = parseInt(document.getElementById('draws').innerHTML) + 1;
+            localStorage.setItem(cDrawsName, parseInt(localStorage.getItem(cDrawsName)) + 1);
         }
+    }
+
+    function loadStatistics() {
+        let wins = localStorage.getItem(cWinsName);
+        let draws = localStorage.getItem(cDrawsName);
+        let loses = localStorage.getItem(cLosesName);
+
+        if (!wins) {
+            localStorage.setItem(cWinsName, 0);
+        } else {
+            document.getElementById('wins').innerHTML = wins;
+        }
+        if (!draws) {
+            localStorage.setItem(cDrawsName, 0);
+        } else {
+            document.getElementById('draws').innerHTML = draws;
+        }
+        if (!loses) {
+            localStorage.setItem(cLosesName, 0);
+        } else {
+            document.getElementById('loses').innerHTML = loses;
+        }
+    }
+
+    function resetStatistics() {
+        document.getElementById('wins').innerHTML = 0;
+        localStorage.setItem(cWinsName, 0);
+        document.getElementById('loses').innerHTML = 0;
+        localStorage.setItem(cLosesName, 0);
+        document.getElementById('draws').innerHTML = 0;
+        localStorage.setItem(cDrawsName, 0);
+        
     }
 
     function duplicateGameState(gState) {
@@ -646,6 +714,30 @@
         return getDifferentMove(gState, transponseGStateInit);
     }
 
+    function getSideAndCornerDefendFirstMove(gState) {
+        return centerMove;
+    }
+
+    function getCornerDefendSecondMove() {
+        // cover case when man's first two moves were in corners and bot's in the centerbundleRenderer.renderToStream
+
+        let index = randomInteger(0, sideMoves.length - 1);
+        return sideMoves[index];
+    }
+
+    function getCenterDefendFirstMove() {
+        let index = randomInteger(0, cornerMoves.length - 1);
+        return cornerMoves[index];
+    }
+
+    function getCenterDefendSecondMove(gState, trDeep) {
+        let transponseGState = getTransponseMatrix(trDeep, gState);
+        if (transponseGState[1][1] == manSign && transponseGState[2][2] == manSign) {
+            return true;
+        }
+        return false;
+    }
+
     function getDifferentMove(realState, fakeState) {
         for (let i = 0; i < 3; i++) {
             for (let j = 0; j < 3; j++) {
@@ -656,30 +748,6 @@
         }
         return null;
     }
-
-    function setCookie(cname, cvalue, exdays) {
-        var d = new Date();
-        d.setTime(d.getTime() + (exdays*24*60*60*1000));
-        var expires = "expires="+ d.toUTCString();
-        document.cookie = cname + "=" + cvalue + ";" + expires + ";path=/";
-    }
-
-    function getCookie(cname) {
-        var name = cname + "=";
-        var decodedCookie = decodeURIComponent(document.cookie);
-        var ca = decodedCookie.split(';');
-        for(var i = 0; i <ca.length; i++) {
-            var c = ca[i];
-            while (c.charAt(0) == ' ') {
-                c = c.substring(1);
-            }
-            if (c.indexOf(name) == 0) {
-                return c.substring(name.length, c.length);
-            }
-        }
-        return "";
-    }
-
 
 </script>
 
